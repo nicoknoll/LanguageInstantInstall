@@ -17,75 +17,77 @@
 */
 
 class LanguageInstantInstall extends Process {
-	
+
 	static public function getModuleInfo() {
 		return array(
 			'title'   => 'Language Instant Install (beta)',
 			'summary' => __('Suggests a list of languages to install.'),
-			'version' => 010,
+			'version' => 100,
 			'author'  => 'Nico Knoll',
 			'singular' => true, 
-			'autoload' => 'name=languages'
+			'autoload' => 'template=admin, name=languages'
 		);
 	}
-	
-	
+
+
 	private $languageList, $languagePage, $cacheName;
-	
+
 
 	public function init() {
 
 		parent::init();
-		
+
+		// Set cahce name
+		$this->cacheName    = 'LanguageInstantInstall';
+
 		// if it's not the "add" screen
 		if($this->input->urlSegment1 != 'add')
 			return false;
-		
+
 		// Check if custom is activated
 		if($this->config->input->get->custom == '1') 
 			return false;
-		
+
 		// populate $this->languageList
 		$this->languageList = $this->getLanguagePacks();
 		$this->languagePage = $this->page;
-		$this->cacheName    = 'LanguageInstantInstall';
-		
+
 		// Overwrite the old "Add Language" form if custom is not selected
 		if($this->config->input->get->install != '') {
-			$this->addHookAfter('ProcessPageType::executeAdd', $this, 'installLanguage'); 
+			$this->addHookAfter('ProcessLanguage::executeAdd', $this, 'installLanguage'); 
 		}
-		
-		$this->addHookAfter('ProcessPageType::executeAdd', $this, 'languageList'); 
+
+		$this->addHookAfter('ProcessLanguage::executeAdd', $this, 'languageList'); 
 	}
-	
-	
-	
-	
-	
+
+
+
+
+
 	public function ___languageList(HookEvent $event) {
 		$event->return = $this->renderTable();
 		return false;
 	}
-	
-	
+
+
 
 	private function renderTable() {
 		$out = '';
-		
+
 		$table = $this->modules->get("MarkupAdminDataTable"); 
 		$table->setEncodeEntities(false); 
 		$fieldNames = array('name', 'code', 'action'); 
 		$fieldLabels = $fieldNames; 
-			
+
 		foreach($fieldLabels as $key => $name) {
 			if($name == 'name') {
 				$fieldLabels[$key] = $this->_('Name'); // Label for 'name' field
 			}
 		}
-		
+
 		$table->headerRow($fieldLabels); 
 		$languages = $this->languageList;
-		
+
 		foreach($languages as $language) {
 			$row = array();
 
@@ -94,9 +96,9 @@ class LanguageInstantInstall extends Process {
 					$row[] = '<code>'.$language[$name].'</code>';
 					continue;
 				}
-				
+
 				if($name == 'action') {
-					
+
 					if($language['download'] != '') {
 						if(!($this->languagePage->child('name='.$language['page_name']) instanceof NullPage)) {
 							// TODO: Check if updatable
@@ -107,73 +109,75 @@ class LanguageInstantInstall extends Process {
 					} else {
 						$link = '<a href="'.$language['forum'].'" target="_blank">Learn more</a>';
 					}
-					
+
 					$updated = 'Updated: '.date('r', $language['modified']); // TODO: local format
 					$row[] = $link.' <i class="note" style="font-size:12px;color:#999;">('.$updated.')</i>'; // TODO: better css
 					continue;
 				}
-				
-				
+
+
 				$row[] = $language[$name]; 
 			}
 			$table->row($row); 
 		}
-		
+
 		$table->action(array($this->_('Create a custom Language') => '../add/?custom=1')); 
 
 		$out .= $table->render();
-		
+
 		return $out;
 	}
-	
-	
+
+
 	// Creates a module list from cache or server
 	private function getLanguagePacks() {
 		if($this->getCacheAge() < 60*60 && $this->getCache() != '' && $this->config->input->get->reset != '1')
 			return $this->getCache();
-		
-		
-		$apikey 		= 'pw223';
-		$limit 		= '350';
-		$baseUrl 	= 'http://modules.processwire.com/export-json/';
-		
-		$modulesUrl = $baseUrl.'?apikey='.$apikey.'&limit='.$limit;
-		
+
+
+
+		$data = $this->modules->getModuleConfigData('ProcessModule'); 
+		$apikey = isset($data['serviceKey']) ? $data['serviceKey'] : 'pw231';
+		$baseUrl = isset($data['serviceUrl']) ? $data['serviceUrl'] : 'http://modules.processwire.com/export-json/';
+		$limit 		= '100';
+
+		$modulesUrl = $baseUrl.'?apikey='.$apikey.'&limit='.$limit.'&category=language-pack';
+
 		if(!$data = file_get_contents($modulesUrl)) {
 			$this->error('File could not be downloaded '.$modulesUrl);
 			return false;
 		}
-		
+
 		$data = json_decode($data, true);
 		$modules = $data['items'];
-		
+
 		// pre define language vars to avoid notice errors in debug mode
 		$languages = array();
 		$languagesSort = array();
-		
+
 		// Filter language-packs
 		foreach($modules as $module) {
 			if($module['categories'][0]['name'] != 'language-pack') continue;
 			$cleanModule = $this->filterModuleInfo($module);
-			
+
 			if(in_array($cleanModule['code'], array_keys($languages))) continue;
 			$languages[$cleanModule['code']] = $cleanModule;
 			// second array for sorting (sort by title)
 			$languagesSort[] = $cleanModule['name'];
 		}
-		
+
 		$languages = $this->sortArrayByArray($languages, $languagesSort);
-		
+
 		$this->setCache($languages);
 		return $languages;
 	}
-	
-	
+
+
 	// Releases the module array from unneeded infos
 	private function filterModuleInfo($module) {
 		$codeRegEx 		= '%[a-zA-Z]{2}[_|-][a-zA-Z]{2}%Uis';
 		$nameENRegEx 	= '%\([a-zA-Z]{2}[_|-][a-zA-Z]{2}\)%Uis';
-		
+
 		// Get language Code
 		if(preg_match($codeRegEx, $module['title'], $matches)) {
 		// 1. Look into name
@@ -182,21 +186,21 @@ class LanguageInstantInstall extends Process {
 		// 2.Look into summary
 			$code = $matches[0];
 		}
-		
+
 		// Clean the codes
 		if(count(explode('-', $code)) > 1) {
 			$codeSplitted = explode('-', $code);
 		} else {	
 			$codeSplitted = explode('_', $code);
 		}
-		
+
 		$code = strtolower($codeSplitted[0]).'-'.strtoupper($codeSplitted[1]);
-		
-		
+
+
 		// get the cleaned english name
 		$nameEN = trim(preg_replace($nameENRegEx, '', $module['title']));
-		
-		
+
+
 		// Build the cleaned array
 		$cleaned = array(
 			'code' 		=> $code,
@@ -209,46 +213,46 @@ class LanguageInstantInstall extends Process {
 			'module'		=> $module['url'],
 			'page_name' => $this->sanitizer->pageName($code)
 		);
-		
+
 		return $cleaned;
 	}
-	
+
 	// function to sort language array
 	private function sortArrayByArray(Array $array, Array $orderArray) {
 		$saveKeys = array_combine($orderArray, array_keys($array));
 		$array = array_combine($orderArray, $array);
-		
+
 		ksort($saveKeys);
 		ksort($array);
-		
+
 		$sorted = array_combine(array_values($saveKeys), array_values($array));
-		
+
 		return $sorted;
 	}
-	
-	
-	
-	
-	
-	
+
+
+
+
+
+
 	// function which installs a slected language
 	public function ___installLanguage() {
 		$code = $this->config->input->get->install;
 		$languages = $this->languageList;
 		$language = $languages[$code];
-		
-		
+
+
 		if(!($this->languagePage->child('name='.$language['page_name']) instanceof NullPage)) {
 			$this->error('Language already installed.');
 			return false;
 		}
-		
+
 		if(!in_array($code, array_keys($languages))) {
 			$this->error('Language not found.');
 			return false;
 		}
 
-		
+
 		// create a new language subpage
 		$p = new Page(); 
 		$p->template = 'language'; 
@@ -256,53 +260,53 @@ class LanguageInstantInstall extends Process {
 		$p->name 	= $language['page_name'];
 		$p->title 	= $language['name_en']; 
 		$p->save(); 
-		
+
 		// add the language files
 		$files = $this->getLanguageFiles($language['download']);
-		
+
 		foreach($files as $file) {
 			$p->language_files->add($file); 
 		}
 		$p->save();
-		
+
 		// Clean up
 		$this->unlinkLanguageFiles();
-		
+
 		$this->message('Language successfully installed. You can activate it under "Access > Users" for each user.');
-		
+
 	}
-		
-	
-	
-	
-	
-	
+
+
+
+
+
+
 	/* SOMA STUFF */
-	
-	
+
+
 	private function downloadFile($url, $fileName) {
-	
+
 		if((substr($url,0,8) == 'https://') && ! extension_loaded('openssl')) {
 			$this->error('OpenSSL extension required but not available. File could not be downloaded from '.$url);
 			return false;
 		}
-	
+
 		// download the zip
 		if(!$content = file_get_contents($url, $fileName)) {
 			$this->error('File could not be downloaded '.$url);
 			return false;
 		}
-	
+
 		if(($fp = fopen($fileName, 'wb')) === false) {
 			$this->error('fopen error for filename '.$fileName);
 			return false;
 		}
-	
+
 		fwrite($fp, $content);
 		fclose($fp);
 		return $fileName;
 	}
-	
+
 	private function createDirectory($directory){
 		if(!file_exists($directory)) {
 			if(!wireMkdir($directory)) {
@@ -312,56 +316,35 @@ class LanguageInstantInstall extends Process {
 		}
 		return true;
 	}
-	
-	private function removeDir($dir){
-		foreach(scandir($dir) as $file) {
-			if($file === '.' || $file === '..') continue;
-			if(is_dir($dir .'/'. $file)) {
-				$this->removeDir($dir .'/'. $file);
-			} else{
-				if(!unlink($dir .'/'. $file)) throw new WireException('Could not remove file '.$file);
-			}
-		}
-		if(!rmdir($dir)) throw new WireException('Could not remove directory '.$dir);
-		return true;
-	}
-	
+
+
 	// returns the extraced language files
 	private function getLanguageFiles($url) {
 		$tmp_dir = $this->config->paths->assets . 'language/';
 		$tmp_zip = $this->config->paths->assets . 'language.zip';
-		
-		
+
+
 		if(!is_writable($this->config->paths->assets)) $this->error($this->_('Make sure assets directory is writeable for PHP.'));
 		if(!is_writable($this->config->paths->siteModules)) $this->error($this->_('Make sure your site modules directory is writeable for PHP.'));
-	
-		
-		if($file = $this->downloadFile($url, $tmp_zip)) {
-			$zip = new ZipArchive;
-			if($zip->open($file) === true) {
-				for($i = 0; $i < $zip->numFiles; $i++) {
-					$zip->extractTo($tmp_dir, array($zip->getNameIndex($i)));
-				}
-				$extracted_directory_name = trim($zip->getNameIndex(0),'/');
-				$zip->close();
-			} else {
-				throw new WireException('Could not open zip file');
-			}
-		}
-		
+
+		$file = $this->downloadFile($url, $tmp_zip);
+
+		// Unzip file
+		wireUnzipFile($file, $tmp_dir);
+
 		// remove temp. zip file
 		if(!unlink($tmp_zip)) throw new WireException('Could not delete downloaded zip file '.$tmp_zip);
-		
+
 		$files = $this->rglob('*.json', 0, $tmp_dir);
 		return $files;
 	}
-	
-	
-	
-	
+
+
+
+
 	private function unlinkLanguageFiles() {
 		$tmp_dir = $this->config->paths->assets . 'language/';
-		return $this->removeDir($tmp_dir);
+		return wireRmdir($tmp_dir, true);
 	}
 
 
@@ -370,59 +353,63 @@ class LanguageInstantInstall extends Process {
 		$paths = @glob($path.'*', GLOB_MARK|GLOB_ONLYDIR|GLOB_NOSORT);
 		$files = array();
 		$files = @glob($path.$pattern, $flags);
-	
-		
+
+
 		foreach ($paths as $path) { $files = @array_merge((array)$files,(array)$this->rglob($pattern, $flags, $path)); }
-		
+
 		foreach($files as $key => $file) {
 			if($file == '' || $file == false || !$file) {
 				unset($files[$key]);
 			}
 		}
-		
+
 		return $files;
 	}
 
-	
-	
-	
-	
+
+
+
+
 	public function setCache($contents, $cache_name = '') {
 		$cache_file = $this->config->paths->cache . (($cache_name != '') ? $cache_name : $this->cacheName) . '.cache';
 		$contents = json_encode($contents);
-		
+
 		if(!$handle = fopen($cache_file, 'w')) throw new WireException('cannot create cache file '.$cache_file);
 		if(!fwrite($handle, $contents)) throw new WireException('cannot write cache file '.$cache_file);
 		fclose($handle);
 		return json_decode($contents, true);
 	}
-	
+
 	public function getCache($cache_name = '') {
 		$cache_file = $this->config->paths->cache . (($cache_name != '') ? $cache_name : $this->cacheName) . '.cache';
-		
+
 		if(!$handle = fopen($cache_file, 'r')) throw new WireException('cannot open cache file '.$cache_file);
 		if(!$contents = fread($handle, filesize($cache_file))) throw new WireException('cannot read cache file '.$cache_file);
 		fclose($handle);
 		return json_decode($contents, true);
 	}
-	
+
 	private function getCacheAge($cache_name = '') {
 		$cache_file = $this->config->paths->cache . (($cache_name != '') ? $cache_name : $this->cacheName) . '.cache';
-		$age = time() - filemtime($cache_file);
+		if(file_exists($cache_file)) {
+			$age = time() - filemtime($cache_file);
+		} else {
+			$age = time();
+		}
 		return $age;
 	}
-	
-	
+
+
 
 	public function ___install() {
-		
+
 		// Check if PW 2.4 or higher is installed
 		if(ProcessWire::versionMajor == 2 && ProcessWire::versionMinor < 4) {
 			throw new WireException(__("This module requires ProcessWire 2.4 or newer"));
 		}		
 
 		$this->message(__("Now go to Setup > Languages and add a new language!"));
-		
+
 	}
-    
+
 } 
