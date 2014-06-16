@@ -1,7 +1,7 @@
 <?php
 
 /*
-	* Language Instant Install 0.1.0
+	* Language Instant Install 1.0.0
 	* Suggests a list of languages to install.
 	*
 	* @author Nico Knoll
@@ -16,13 +16,13 @@
 	*
 */
 
-class LanguageInstantInstall extends Process {
+class LanguageInstantInstall extends WireData implements Module {
 
 	static public function getModuleInfo() {
 		return array(
-			'title'   => 'Language Instant Install (beta)',
+			'title'   => 'Language Instant Install',
 			'summary' => __('Suggests a list of languages to install.'),
-			'version' => 010,
+			'version' => '100',
 			'author'  => 'Nico Knoll',
 			'singular' => true, 
 			'autoload' => 'template=admin, name=languages'
@@ -34,8 +34,6 @@ class LanguageInstantInstall extends Process {
 
 
 	public function init() {
-
-		parent::init();
 
 		// Set cahce name
 		$this->cacheName    = 'LanguageInstantInstall';
